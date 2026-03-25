@@ -172,7 +172,7 @@ impl Traj<Spacecraft> {
         let mut time_system = String::new();
 
         let ignored_tokens: HashSet<_> = [
-            "CCSDS_OMM_VERS".to_string(),
+            "CCSDS_OEM_VERS".to_string(),
             "CREATION_DATE".to_string(),
             "ORIGINATOR".to_string(),
         ]
@@ -316,17 +316,17 @@ impl Traj<Spacecraft> {
         let iso8601_no_ts = Format::from_str("%Y-%m-%dT%H:%M:%S.%f").unwrap();
 
         // Write mandatory metadata
-        writeln!(writer, "CCSDS_OMM_VERS = 2.0").map_err(err_hdlr)?;
+        writeln!(writer, "CCSDS_OEM_VERS = 3.0").map_err(err_hdlr)?;
 
         writeln!(
             writer,
-            "COMMENT Built by {} -- https://nyxspace.com/\n",
+            "COMMENT Built by {} -- https://nyxspace.com/",
             prj_name_ver()
         )
         .map_err(err_hdlr)?;
         writeln!(
             writer,
-            "COMMENT Nyx Space provided under the AGPL v3 open source license -- https://nyxspace.com/pricing\n"
+            "COMMENT Nyx Space provided under the AGPL v3 open source license -- https://nyxspace.com/pricing"
         )
         .map_err(err_hdlr)?;
 
@@ -338,7 +338,7 @@ impl Traj<Spacecraft> {
         .map_err(err_hdlr)?;
         writeln!(
             writer,
-            "ORIGINATOR = {}\n",
+            "ORIGINATOR = {}",
             metadata
                 .get("originator")
                 .unwrap_or(&"Nyx Space".to_string())
@@ -346,12 +346,22 @@ impl Traj<Spacecraft> {
         .map_err(err_hdlr)?;
 
         writeln!(writer, "META_START").map_err(err_hdlr)?;
-        // Write optional metadata
-        if let Some(object_name) = metadata.get("object_name") {
-            writeln!(writer, "\tOBJECT_NAME = {object_name}").map_err(err_hdlr)?;
-        } else if let Some(object_name) = &self.name {
-            writeln!(writer, "\tOBJECT_NAME = {object_name}").map_err(err_hdlr)?;
-        }
+        // Write mandatory metadata, defaulting to UNKNOWN when the caller cannot provide a value.
+        let object_name = metadata
+            .get("object_name")
+            .cloned()
+            .or_else(|| self.name.clone())
+            .unwrap_or_else(|| "UNKNOWN".to_string());
+        writeln!(writer, "OBJECT_NAME = {object_name}").map_err(err_hdlr)?;
+        writeln!(
+            writer,
+            "OBJECT_ID = {}",
+            metadata
+                .get("object_id")
+                .map(String::as_str)
+                .unwrap_or("UNKNOWN")
+        )
+        .map_err(err_hdlr)?;
 
         let first_orbit = states[0].orbit;
         let first_frame = first_orbit.frame;
@@ -363,11 +373,11 @@ impl Traj<Spacecraft> {
             }
         );
         let splt: Vec<&str> = frame_str.split(' ').collect();
-        let center = splt[0];
-        let ref_frame = frame_str.replace(center, " ");
+        let center = splt[0].to_ascii_uppercase();
+        let ref_frame = frame_str.replacen(splt[0], "", 1);
         writeln!(
             writer,
-            "\tREF_FRAME = {}",
+            "REF_FRAME = {}",
             match ref_frame.trim() {
                 "J2000" => "ICRF",
                 _ => ref_frame.trim(),
@@ -375,36 +385,36 @@ impl Traj<Spacecraft> {
         )
         .map_err(err_hdlr)?;
 
-        writeln!(writer, "\tCENTER_NAME = {center}",).map_err(err_hdlr)?;
+        writeln!(writer, "CENTER_NAME = {center}",).map_err(err_hdlr)?;
 
-        writeln!(writer, "\tTIME_SYSTEM = {}", first_orbit.epoch.time_scale).map_err(err_hdlr)?;
+        writeln!(writer, "TIME_SYSTEM = {}", first_orbit.epoch.time_scale).map_err(err_hdlr)?;
 
         writeln!(
             writer,
-            "\tSTART_TIME = {}",
+            "START_TIME = {}",
             Formatter::new(states[0].epoch(), iso8601_no_ts)
         )
         .map_err(err_hdlr)?;
         writeln!(
             writer,
-            "\tUSEABLE_START_TIME = {}",
+            "USEABLE_START_TIME = {}",
             Formatter::new(states[0].epoch(), iso8601_no_ts)
         )
         .map_err(err_hdlr)?;
         writeln!(
             writer,
-            "\tUSEABLE_STOP_TIME = {}",
+            "USEABLE_STOP_TIME = {}",
             Formatter::new(states[states.len() - 1].epoch(), iso8601_no_ts)
         )
         .map_err(err_hdlr)?;
         writeln!(
             writer,
-            "\tSTOP_TIME = {}",
+            "STOP_TIME = {}",
             Formatter::new(states[states.len() - 1].epoch(), iso8601_no_ts)
         )
         .map_err(err_hdlr)?;
 
-        writeln!(writer, "META_STOP\n").map_err(err_hdlr)?;
+        writeln!(writer, "META_STOP").map_err(err_hdlr)?;
 
         for sc_state in &states {
             let state = sc_state.orbit;
@@ -421,9 +431,6 @@ impl Traj<Spacecraft> {
             )
             .map_err(err_hdlr)?;
         }
-
-        #[allow(clippy::writeln_empty_string)]
-        writeln!(writer, "").map_err(err_hdlr)?;
 
         // Return the path this was written to
         let tock_time = Epoch::now().unwrap() - tick;
